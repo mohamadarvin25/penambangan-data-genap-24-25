@@ -1,0 +1,755 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": []
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "source": [
+        "# Lab 10 Data Mining - Time Series"
+      ],
+      "metadata": {
+        "id": "ceg_QrISgBBX"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Author: Jaycent (085757197839)"
+      ],
+      "metadata": {
+        "id": "CYNMwSJ_p4mG"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Nama:\n",
+        "\n",
+        "NPM:"
+      ],
+      "metadata": {
+        "id": "lQuwrPEBgFAS"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "ALmUdupzgQaQ"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Time series atau data runtun waktu merupakan sekumpulan data yang dikumpulkan atau direkam secara berurutan berdasarkan waktu. Karakteristik utama dari time series adalah adanya ketergantungan antar data yang berurutan, sehingga pola historis dapat digunakan untuk memahami perilaku masa kini dan meramalkan kejadian di masa depan. Contoh umum data time series meliputi harga saham harian, suhu harian, volume penjualan bulanan, dan detak jantung per detik. Karena sifatnya yang dinamis dan berkaitan dengan waktu, analisis time series sangat penting di berbagai bidang seperti keuangan, cuaca, kesehatan, dan sistem pemantauan.\n",
+        "\n",
+        "Dalam konteks temporal data mining, time series menjadi fokus utama dalam upaya menemukan pola tersembunyi, anomali, asosiasi, dan tren dari data yang berkembang seiring waktu. Teknik-temuan seperti trend analysis, seasonal decomposition, forecasting, dan pattern recognition banyak digunakan untuk menggali wawasan dari data time series. Tantangan utama dalam menganalisis time series meliputi noise data, ketidakteraturan waktu pencatatan, dan kompleksitas pola temporal yang tidak selalu linear atau stasioner."
+      ],
+      "metadata": {
+        "id": "lRSfIBJNgHbr"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Data yang akan kita gunakan untuk lab kali ini adalah `monthly-soda-production-in-austr.csv`, yaitu data produksi soda per bulan di Australia dari Januari 1956 hingga Agustus 1995."
+      ],
+      "metadata": {
+        "id": "4MkOSk1MgTOk"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# jalankan ini karena akan ada incompatibility dengan versi NumPy nantinya\n",
+        "!pip uninstall -y numpy\n",
+        "!pip install --q numpy==1.26.4\n",
+        "\n",
+        "import os\n",
+        "os.kill(os.getpid(), 9)"
+      ],
+      "metadata": {
+        "id": "AG89x8c3WkkB"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "!pip install --q pmdarima prophet"
+      ],
+      "metadata": {
+        "id": "sAYqIaSfUIQd"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import warnings\n",
+        "warnings.filterwarnings('ignore')"
+      ],
+      "metadata": {
+        "id": "RMpCCrIfXQKW"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Import Data"
+      ],
+      "metadata": {
+        "id": "uB9Fl0RKoZB0"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import pandas as pd\n",
+        "\n",
+        "df = pd.read_csv('monthly-soda-production-in-austr.csv', index_col='Month')\n",
+        "df.index = pd.to_datetime(df.index)\n",
+        "df.head()"
+      ],
+      "metadata": {
+        "id": "0OGd2KjXgEHF"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Split Data"
+      ],
+      "metadata": {
+        "id": "fF_liK0PoT4_"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Kita akan melakukan splitting data ini menjadi train set yang akan digunakan untuk pelatihan dan test set yang akan digunakan untuk pengujian. Splitting pada data time series sedikit berbeda dengan data pada umumnya, yakni perlu memerhatikan urutan waktu, agar model tidak \"mengintip masa depan\". Kita akan gunakan rasio 80:20 untuk splitting ini."
+      ],
+      "metadata": {
+        "id": "OroLg1ySnvGm"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "train_size = int(len(df) * 0.8)\n",
+        "\n",
+        "train = df.iloc[:train_size]\n",
+        "test = df.iloc[train_size:]\n",
+        "\n",
+        "print(\"Train set:\", train.index.min(), \"to\", train.index.max())\n",
+        "print(\"Test set:\", test.index.min(), \"to\", test.index.max())"
+      ],
+      "metadata": {
+        "id": "_HQ0Hyy1n6uM"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Exploratory Data Analysis (EDA)"
+      ],
+      "metadata": {
+        "id": "FEK2nK-loeG-"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Untuk section ini, gunakan data train saja. Seluruh visualisasi yang Anda lakukan **wajib** menggunakan `plotly` agar lebih interaktif. Silakan baca dokumentasi library ini di [sini](https://plotly.com/python/).\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "hnShh1IYptT3"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Tampilkan statistik deskriptif sederhana dari data tersebut. Informasi harus minimal mengandung average, max, min, dan standar deviasi. Silakan coba eksplorasi methods yang ada pada class DataFrame yang dapat menampilkan descriptive statistics."
+      ],
+      "metadata": {
+        "id": "lmFmmKmXpBwz"
+      }
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {
+        "id": "MHjX1HW1d4nF"
+      },
+      "outputs": [],
+      "source": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Tampilkan time series plot untuk keseluruhan data tersebut, dengan waktu sebagai sumbu-x dan produksi soda sebagai sumbu-y. Gunakan `go.Scatter()` untuk keperluan ini ([referensi](https://plotly.com/python-api-reference/generated/plotly.graph_objects.Scatter.html))."
+      ],
+      "metadata": {
+        "id": "Ki7PnsVFpYgq"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "KCKDUU5mjNsn"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Kita akan coba menganalisis secara sekilas seasonality dari data tersebut. Tampilkan time series plot, tetapi dengan seasonality tahunan. Maksudnya, gunakan satuan bulanan sebagai sumbu-x sehingga akan terdapat beberapa line (per tahun) dalam satu chart. Hint: Ekstrak terlebih dahulu tahun dan bulan, lalu bentuk pivot table (https://pandas.pydata.org/docs/reference/api/pandas.pivot_table.html) untuk memudahkan visualisasi."
+      ],
+      "metadata": {
+        "id": "YCuPNATaqJVf"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "_qrlgtrRrUGd"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Tampilkan boxplot per bulan dari data tersebut. Gunakan fungsi `box()` dari `plotly.express`."
+      ],
+      "metadata": {
+        "id": "Yk4uoPzvuAEo"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "ICS1Vm4LuKb5"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Berdasarkan kedua plot terakhir yang sudah Anda buat, apakah ada pola menarik yang bisa ditemukan? Apakah tren yang ditampilkan masuk akal sesuai dunia nyata? Pada bulan apa umumnya produksi tertinggi dan terendah, menurut Anda bisa karena apa? Silakan kaitkan dengan bagaimana musim (dan musim libur) di Australia dan aspek-aspek lainnya yang menurut Anda dapat memengaruhi produksi minuman soda (atau minumam dingin in general). Masukkan referensi yang Anda gunakan jika ada."
+      ],
+      "metadata": {
+        "id": "uVLO8x0gs5MR"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "\n",
+        "\n",
+        "> **Jawaban**:\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "XpaYDhWrwFii"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Beberapa model forecasting seperti ARMA mengasumsikan bahwa data bersifat stasioner. Maksud dari stasioner adalah kondisi di mana properti dari data time series tersebut tidak berubah seiring waktu. Artinya, nilai mean, variance, dan covariance dari data tersebut tetap konstan atau tidak bergantung pada waktu. Tunjukkan plot rolling average dan variance dari data tersebut dengan window 12 bulan. Gunakan method `rolling()` untuk menghitung informasi ini."
+      ],
+      "metadata": {
+        "id": "bHwTGrthyXoV"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "CfziEx-uzuzG"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "SK6O80rtqgBE"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "TrjLeK9WwEuh"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Apakah menurut Anda data tersebut stasioner? Jika ya, jelaskan alasannya. Jika tidak, jelaskan alasannya dan tentukan satu teknik yang dapat digunakan untuk membuat data menjadi stasioner."
+      ],
+      "metadata": {
+        "id": "HxM60x3y0jwG"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "\n",
+        "\n",
+        "> **Jawaban**:\n"
+      ],
+      "metadata": {
+        "id": "LDUU2wJv0uKs"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Tampilkan plot partial autocorrelation (PACF) untuk menghitung korelasi langsung antara lags. Tampilkan nilai PACF untuk hingga 20 lags. Gunakan library `statsmodels` untuk menghitung PACF, tepatnya dengan fungsi `pacf()`."
+      ],
+      "metadata": {
+        "id": "1kEOxH8842wW"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "TA8mTdQx3f2P"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Lag berapa yang paling tinggi korelasinya dengan lag-0? Tampilkan\n",
+        "juga scatterplot untuk menjustifikasi adanya hubungan linear antara lag tersebut dan lag-0. Gunakan method `shift()` untuk mendapatkan lag tertentu."
+      ],
+      "metadata": {
+        "id": "8PebfSui7QEy"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "\n",
+        "\n",
+        "> **Jawaban:**\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "8tl0iwBN8Khj"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "d01nhAaG7jQl"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Lakukan time series decomposition pada data tersebut menjadi trend, seasonal, dan residual. Tampilkan pula original data-nya. Silakan gunakan fungsi `seasonal_decompose()` dari `statsmodels`. Ini adalah model additive dikarenakan \"seasonal variation\" dari data tidak terlalu berubah banyak seiring waktu, sehingga gunakan parameter `additive` pada fungsi tersebut. Gunakan `make_subplots()` untuk membuat subplots pada `plotly`."
+      ],
+      "metadata": {
+        "id": "3GK1vm9j9Iuc"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "nRngcAgErgPF"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "6Sxt8UeR9UNK"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Modeling"
+      ],
+      "metadata": {
+        "id": "cAtpJIkqAnV6"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Untuk bagian modeling, kita akan mencoba beberapa model untuk melakukan forecasting. Hasil dari evaluasi tiap model **wajib** Anda tambahkan ke kolom baru di dataframe `test_result` berikut. Kita akan melakukan evaluasi di akhir berdasarkan dataframe itu saja.\n",
+        "\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "b_RxUYHEAqBZ"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "test_result = test.copy()"
+      ],
+      "metadata": {
+        "id": "QiYHR_Y5HOlw"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### Averaging"
+      ],
+      "metadata": {
+        "id": "JVFst9NOBu6y"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Averaging adalah teknik untuk memprediksi data pada waktu tertentu dengan mengambil rata-rata n data pada timesteps sebelumnya. Dalam kasus ini, implementasikan averaging dengan empat variasi n, yaitu 3, 6, 9, dan 12.\n",
+        "\n",
+        "Notes: AFAIK, tidak ada library yang mengimplementasikan ini. Silakan implementasi sendiri dengan fitur `rolling` dan `shift` pada `pandas`. Jangan lupa gabungkan kembali dulu data `train` dan `test`, karena butuh informasi dari periode yang ada pada train untuk memprediksi test."
+      ],
+      "metadata": {
+        "id": "JorQB_F8DRgk"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "9VjayQHDHz7d"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### Autoregressive"
+      ],
+      "metadata": {
+        "id": "IC9cyGNyIb5Y"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Sebelumnya, Anda telah menentukan lag berapa yang memiliki korelasi tertinggi dengan lag-0. Gunakan informasi ini dalam membangun model autoregressive Anda sebagai input dari hyperparameter `lags`. Silakan menggunakan `AutoReg` dari `statsmodels`."
+      ],
+      "metadata": {
+        "id": "id_xgT2BNNdr"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "1jDggl9oNusz"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### ARIMA"
+      ],
+      "metadata": {
+        "id": "ClJAllnTQZmA"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** ARIMA merupakan generalisasi dari ARMA yang hanya menerima data yang bersifat stasioner. Dengan ARIMA, fitur differencing ditambahkan untuk membuat data menjadi lebih stasioner dahulu sebelum diterapkan ARMA.\n",
+        "\n",
+        "Ada 3 hyperparameter yang digunakan pada ARIMA:\n",
+        "- p --> ordo autoregressive\n",
+        "- d --> ordo differencing\n",
+        "- q --> ordo moving average\n",
+        "\n",
+        "Dapat dilakukan hyperparameter tuning untuk mencari nilai p, d, dan q yang tepat. Akan tetapi, sama seperti pada EDA dan modeling autoregressive sebelumnya, kita sudah mendapatkan nilai ordo autoregressive terbaik berdasarkan PACF. Cukup gunakan nilai tersebut saja untuk p. Sementara itu, untuk d dan q, gunakan nilai 1 keduanya untuk saat ini."
+      ],
+      "metadata": {
+        "id": "EBUl0mDSQ03e"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Gunakan model `ARIMA` dari `statsmodels` dengan hyperparameter `order` sesuai yang telah disebutkan."
+      ],
+      "metadata": {
+        "id": "fJQp_lTL1A9m"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "02it01NnS3ir"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### Auto ARIMA"
+      ],
+      "metadata": {
+        "id": "52hM5EcNUNLO"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Sebenarnya ini adalah model yang sama dengan ARIMA, namun library `pmdarima` menyediakan model `auto_arima` agar Anda tidak perlu lagi melakukan hyperparameter tuning secara manual.\n",
+        "\n",
+        "Akan tetapi, Anda akan mencoba model modifikasi dari ARIMA, yaitu SARIMA (Seasonal ARIMA), yang cocok dengan data seasonal seperti data ini, dengan `m = 12`, dikarenakan seasonality pada data ini tiap 12 bulan (pola data akan berulang tiap 12 time steps). Silakan tentukan hyperparameter yang lain sendiri sesuai keinginan Anda."
+      ],
+      "metadata": {
+        "id": "_7FFANJRUPt2"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "PVshAxxVUoDa"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### Prophet"
+      ],
+      "metadata": {
+        "id": "zNfinITdaqGB"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** [Prophet](https://facebook.github.io/prophet/) merupakan library forecasting time series yang dikembangkan oleh Facebook. Model ini hanya sesuai dengan data time series univariat (hanya satu variabel). Berikut adalah deskripsi Prophet, sesuai dengan website resminya:\n",
+        "\n",
+        "\n",
+        "> Prophet is a procedure for forecasting time series data based on an additive model where non-linear trends are fit with yearly, weekly, and daily seasonality, plus holiday effects. It works best with time series that have strong seasonal effects and several seasons of historical data. Prophet is robust to missing data and shifts in the trend, and typically handles outliers well.\n",
+        "\n",
+        "Perhatikan bahwa ada ketentuan dataframe yang diterima oleh Prophet, yakni menerima dua kolom: `ds` yang harus bertipe datetime dan `y` yang merupakan target variable. Silakan eksplorasi notebook Kaggle [berikut](https://www.kaggle.com/code/prashant111/tutorial-time-series-forecasting-with-prophet) untuk detail lebih lanjut terkait bagaimana menggunakan Prophet untuk forecasting. Cukup gunakan `yhat` sebagai kolom hasil akhir yang akan dimasukkan ke `test_result`.\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "lcOEzTh-arIH"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "CtWeWdetbdTX"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "### Model Regresi Biasa"
+      ],
+      "metadata": {
+        "id": "NUNLDoPfgph9"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Di KASDAD, Anda telah belajar banyak model yang dapat digunakan untuk melakukan modeling task regresi, mulai dari linear regression, random forests, naive bayes, hingga neural network (multilayer perceptron). Dari semua model regresi tersebut, pilih salah satu model (boleh model regresi yang tidak diajarkan di KASDAD, selama bukan khusus untuk time series forecasting) untuk kemudian Anda coba terapkan untuk memprediksi data test.\n",
+        "\n",
+        "Silakan gunakan kreatifitas Anda dalam melakukan feature engineering.\n",
+        "\n",
+        "Akan ada bonus 5 poin jika Anda melakukan hyperparameter tuning pada model Anda. Gunakan library seperti `optuna` atau `GridSearchCV` milik `sklearn` untuk melakukan hyperparameter tuning."
+      ],
+      "metadata": {
+        "id": "puRpTMbMgtpG"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "pK8O4y42h59i"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "## Evaluation"
+      ],
+      "metadata": {
+        "id": "IJHHtGu6Oj41"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Sebelum mengevaluasi secara kuantitatif, buatlah plot yang menunjukkan perbandingan hasil forecasting semua model yang Anda gunakan dengan data asli. Masukkan semuanya ke dalam satu plot saja. Sama seperti sebelumnya, silakan gunakan `go.Scatter()`."
+      ],
+      "metadata": {
+        "id": "4Asl34Lxle0Q"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "TDWgb_gumEJc"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Kita akan menggunakan beberapa metrik untuk mengevaluasi kinerja dari model kita, yaitu:\n",
+        "- Mean Absolute Error\n",
+        "- Root Mean Squared Error\n",
+        "- Mean Absolute Percentage Error"
+      ],
+      "metadata": {
+        "id": "reGRw-6WlUAP"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "Yl8hOdzTn0iN"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import sklearn.metrics as metrics\n",
+        "\n",
+        "def compute_metrics(y_true, y_pred):\n",
+        "    mae = metrics.mean_absolute_error(y_true, y_pred)\n",
+        "    rmse = metrics.root_mean_squared_error(y_true, y_pred)\n",
+        "    mape = metrics.mean_absolute_percentage_error(y_true, y_pred)\n",
+        "    return {\n",
+        "        \"mae\": mae,\n",
+        "        \"rmse\": rmse,\n",
+        "        \"mape\": mape\n",
+        "    }"
+      ],
+      "metadata": {
+        "id": "o_aSoWrwBTF3"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Lakukan perhitungan untuk semua hasil dari model tersebut, lalu tampilkan dalam suatu dataframe agar memudahkan pembacaan."
+      ],
+      "metadata": {
+        "id": "les1WnPunGEn"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "PMapv0CHmqlS"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Berikan interpretasi Anda terhadap hasil evaluasi tersebut. Manakah model yang memberikan performa terbaik?"
+      ],
+      "metadata": {
+        "id": "6GrX3VHc2FZI"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "\n",
+        "\n",
+        "> **Jawaban:**\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "DOayPE4f2LyZ"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "**[SOAL]** Bandingkan performa model AR dan ARIMA (dan AutoARIMA). Manakah yang lebih baik secara akurasi? Jelaskan alasannya mengapa bisa terjadi demikian menurut Anda."
+      ],
+      "metadata": {
+        "id": "jL4XtPBJoGpt"
+      }
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "\n",
+        "\n",
+        "> **Jawaban:**\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "NTLe0TL-pebp"
+      }
+    }
+  ]
+}
